@@ -1,15 +1,45 @@
+# Use container-based infrastructure
+sudo: false
+
 language: scala
+
+#https://docs.travis-ci.com/user/reference/osx#jdk-and-os-x
+#Note: osx uses jdk10 by default which is NOT officially supported by scala
+#This does not seem to be causing any errors right now
+os:
+  - linux
+  - osx
+
 scala:
-  - 2.11.7
-addons:
-  apt:
-    packages: libgmp-dev
+  - 2.11.12
+  - 2.12.8
+
+# These directories are cached to S3 at the end of the build
+cache:
+  directories:
+    - $HOME/.ivy2/cache
+    - $HOME/.sbt/boot/
+
+before_cache:
+  # Tricks to avoid unnecessary cache updates
+  - find $HOME/.sbt -name "*.lock" | xargs rm
+  - find $HOME/.ivy2 -name "ivydata-*.properties" | xargs rm
+
+before_install:
+  - if [[ $TRAVIS_OS_NAME == "linux" ]]; then export PLATFORM="x86_64-linux-gnu"; else export PLATFORM="osx64"; fi
+  - wget https://bitcoincore.org/bin/bitcoin-core-0.16.3/bitcoin-0.16.3-${PLATFORM}.tar.gz
+  - tar -xzf bitcoin-0.16.3-${PLATFORM}.tar.gz
+  - cd bitcoin-0.16.3/bin
+  - export PATH=$PATH:$(pwd)
+  - cd ../..
+
 install:
-  - mkdir lib && cd secp256k1
-  - ./autogen.sh
-  - ./configure --enable-jni --enable-experimental --enable-module-ecdh
-  - make
-  - cd ../
-  - cp secp256k1/.libs/libsecp256k1.so lib
-script: "sbt clean coverage test"
-after_success: "sbt coverageReport coveralls"
+  - wget https://github.com/ACINQ/eclair/releases/download/v0.2-beta8/eclair-node-0.2-beta8-52821b8.jar
+  - export ECLAIR_PATH=$(pwd)
+
+script:
+  - sbt ++$TRAVIS_SCALA_VERSION coverage test &&
+    sbt ++$TRAVIS_SCALA_VERSION core/coverageReport &&
+    sbt ++$TRAVIS_SCALA_VERSION coverageAggregate
+after_success:
+  - sbt ++$TRAVIS_SCALA_VERSION coveralls
